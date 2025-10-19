@@ -54,7 +54,7 @@
     background:var(--bg); color:var(--text); transition: background .2s, color .2s; 
     -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
     padding-top: 60px; /* For fixed header */
-    padding-bottom: 70px; /* For fixed bottom nav */
+    padding-bottom: 100px; /* For floating bottom nav */
   }
 
   .wrap{max-width:960px; margin:0 auto; padding:0 20px}
@@ -258,16 +258,22 @@
   /* Bottom Nav */
   .bottom-nav {
     position: fixed;
-    bottom: 0; left: 0; right: 0;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 32px);
+    max-width: 480px;
     height: 70px;
     z-index: 50;
     display: flex;
     justify-content: space-around;
     background: rgba(var(--card-rgb), 0.85);
     backdrop-filter: saturate(180%) blur(10px);
-    border-top: 1px solid var(--border);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    box-shadow: var(--shadow-md);
     padding: 0 10px;
-    transition: background .2s, border-color .2s;
+    transition: all .2s;
   }
   .bottom-nav-btn {
     display: flex;
@@ -2168,23 +2174,56 @@ let currentUtterance = null;
 let originalContent = null;
 
 function populateVoiceList() {
+    const voiceSelect = $('#ttsVoice');
     try {
         // Guard against browsers with no or buggy speech synthesis
-        if (!('speechSynthesis' in window) || typeof window.speechSynthesis.getVoices !== 'function') {
-            console.warn("Speech synthesis not supported or getVoices not available.");
+        if (!synth || typeof synth.getVoices !== 'function') {
+            console.warn("Speech synthesis not supported.");
+            if (voiceSelect) {
+                voiceSelect.innerHTML = `<option>TTS not available</option>`;
+                voiceSelect.disabled = true;
+                voiceSelect.closest('.audio-player-controls')?.classList.add('hidden'); // Hide entire control set if not supported
+            }
             return;
         }
-        voices = synth.getVoices().filter(v => v.lang.startsWith('en'));
-        const voiceSelect = $('#ttsVoice');
-        if (voiceSelect) { // Check if element exists before using it
-            voiceSelect.innerHTML = voices
-                .map(voice => `<option value="${voice.name}">${voice.name} (${voice.lang})${voice.default ? ' — Default' : ''}</option>`)
-                .join('');
+        
+        const availableVoices = synth.getVoices();
+
+        if (!availableVoices || availableVoices.length === 0) {
+            // This can happen on first load, onvoiceschanged will repopulate
+            console.warn("getVoices() returned no voices. Waiting for onvoiceschanged.");
+            if (voiceSelect && voiceSelect.options.length === 0) {
+                voiceSelect.innerHTML = `<option>Loading voices...</option>`;
+                voiceSelect.disabled = true;
+            }
+            return;
+        }
+
+        voices = availableVoices.filter(v => v.lang.startsWith('en'));
+        
+        if (voiceSelect) {
+            if (voices.length > 0) {
+                voiceSelect.innerHTML = voices
+                    .map(voice => `<option value="${voice.name}">${voice.name} (${voice.lang})${voice.default ? ' — Default' : ''}</option>`)
+                    .join('');
+                voiceSelect.disabled = false;
+                voiceSelect.closest('.audio-player-controls')?.classList.remove('hidden');
+            } else {
+                voiceSelect.innerHTML = `<option>No English voices</option>`;
+                voiceSelect.disabled = true;
+                voiceSelect.closest('.audio-player-controls')?.classList.add('hidden');
+            }
         }
     } catch (e) {
         console.error("Error populating voice list:", e);
+        if (voiceSelect) {
+            voiceSelect.innerHTML = `<option>Error loading voices</option>`;
+            voiceSelect.disabled = true;
+            voiceSelect.closest('.audio-player-controls')?.classList.add('hidden');
+        }
     }
 }
+
 
 function removeHighlight() {
     const editor = $('#noteContent');
@@ -2609,10 +2648,11 @@ async function initializeApp() {
         renderAchievements();
         setupEditorToolbar();
 
-        if (synth.onvoiceschanged !== undefined) {
+        // Voices can load asynchronously.
+        populateVoiceList();
+        if (synth && synth.onvoiceschanged !== undefined) {
             synth.onvoiceschanged = populateVoiceList;
         }
-        populateVoiceList();
 
         $('#noteTitle').addEventListener('input', triggerAutosave);
         $('#noteSubtitle').addEventListener('input', triggerAutosave);
