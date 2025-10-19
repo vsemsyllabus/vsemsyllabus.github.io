@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <!-- Chosen Palette: Syllabrix Modern Dark/Light -->
@@ -2167,11 +2168,22 @@ let currentUtterance = null;
 let originalContent = null;
 
 function populateVoiceList() {
-    voices = synth.getVoices().filter(v => v.lang.startsWith('en'));
-    const voiceSelect = $('#ttsVoice');
-    voiceSelect.innerHTML = voices
-        .map(voice => `<option value="${voice.name}">${voice.name} (${voice.lang})${voice.default ? ' — Default' : ''}</option>`)
-        .join('');
+    try {
+        // Guard against browsers with no or buggy speech synthesis
+        if (!('speechSynthesis' in window) || typeof window.speechSynthesis.getVoices !== 'function') {
+            console.warn("Speech synthesis not supported or getVoices not available.");
+            return;
+        }
+        voices = synth.getVoices().filter(v => v.lang.startsWith('en'));
+        const voiceSelect = $('#ttsVoice');
+        if (voiceSelect) { // Check if element exists before using it
+            voiceSelect.innerHTML = voices
+                .map(voice => `<option value="${voice.name}">${voice.name} (${voice.lang})${voice.default ? ' — Default' : ''}</option>`)
+                .join('');
+        }
+    } catch (e) {
+        console.error("Error populating voice list:", e);
+    }
 }
 
 function removeHighlight() {
@@ -2577,46 +2589,54 @@ async function processReview(cardId, rating) {
 
 /* =============== INIT =============== */
 async function initializeApp() {
-    const savedTheme = localStorage.getItem('theme'); 
-    setTheme(savedTheme || 'dark');
-    $('#themeToggle')?.addEventListener('click', ()=> setTheme(document.body.getAttribute('data-theme')==='dark'?'light':'dark', true));
+    try {
+        const savedTheme = localStorage.getItem('theme'); 
+        setTheme(savedTheme || 'dark');
+        $('#themeToggle')?.addEventListener('click', ()=> setTheme(document.body.getAttribute('data-theme')==='dark'?'light':'dark', true));
 
-    await loadState();
-    
-    buildSearch();
-    renderDashboard();
-    renderDateScroller();
-    renderSubjectTabs();
-    renderSubjects(DATA[0].code);
-    renderNotes();
-    renderImportant();
-    renderPlannerTool();
-    renderTopicPicker();
-    renderReview();
-    renderAchievements();
-    setupEditorToolbar();
-
-    if (synth.onvoiceschanged !== undefined) {
-        synth.onvoiceschanged = populateVoiceList;
-    }
-    populateVoiceList();
-
-    $('#noteTitle').addEventListener('input', triggerAutosave);
-    $('#noteSubtitle').addEventListener('input', triggerAutosave);
-    $('#noteContent').addEventListener('input', triggerAutosave);
-    $('#noteKeys').addEventListener('input', triggerAutosave);
-
-    $('#mobileNoteSelector')?.addEventListener('change', e => {
-        const newIndex = parseInt(e.target.value, 10);
-        if (isNaN(newIndex) || newIndex === currentNoteIndex) return;
+        await loadState();
         
-        if (autosaveTimeout) saveCurrentNote(true);
-        stopNoteAudio();
-        currentNoteIndex = newIndex;
-        renderNoteUI();
-    });
+        buildSearch();
+        renderDashboard();
+        renderDateScroller();
+        renderSubjectTabs();
+        renderSubjects(DATA[0].code);
+        renderNotes();
+        renderImportant();
+        renderPlannerTool();
+        renderTopicPicker();
+        renderReview();
+        renderAchievements();
+        setupEditorToolbar();
 
-    $('#loader').classList.add('hidden');
+        if (synth.onvoiceschanged !== undefined) {
+            synth.onvoiceschanged = populateVoiceList;
+        }
+        populateVoiceList();
+
+        $('#noteTitle').addEventListener('input', triggerAutosave);
+        $('#noteSubtitle').addEventListener('input', triggerAutosave);
+        $('#noteContent').addEventListener('input', triggerAutosave);
+        $('#noteKeys').addEventListener('input', triggerAutosave);
+
+        $('#mobileNoteSelector')?.addEventListener('change', e => {
+            const newIndex = parseInt(e.target.value, 10);
+            if (isNaN(newIndex) || newIndex === currentNoteIndex) return;
+            
+            if (autosaveTimeout) saveCurrentNote(true);
+            stopNoteAudio();
+            currentNoteIndex = newIndex;
+            renderNoteUI();
+        });
+
+        $('#loader').classList.add('hidden');
+    } catch (error) {
+        console.error("Syllabrix failed to initialize:", error);
+        const loader = $('#loader');
+        if (loader) {
+            loader.textContent = "An error occurred while loading. Please refresh the page.";
+        }
+    }
 }
 
 initializeApp();
